@@ -1,0 +1,3 @@
+HolmesV[skills_minimal]>=2021.5.6a10
+hivemind_bus_client
+jarbas_hive_mind
