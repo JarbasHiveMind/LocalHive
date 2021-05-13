@@ -1,7 +1,7 @@
 from local_hive import LocalHiveListener
 
 
-skills_folder = "/home/user/my_code/HiveMind/LocalMind/test_skills"
+skills_folder = "/home/user/my_code/HiveMind/LocalMind/examples/test_skills/local_skills"
 
 
 def get_listener(port=6989):

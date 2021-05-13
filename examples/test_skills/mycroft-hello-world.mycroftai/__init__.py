@@ -18,6 +18,7 @@ from mycroft.messagebus import Message
 from adapt.intent import IntentBuilder
 from mycroft import MycroftSkill, intent_handler
 
+
 class HelloWorldSkill(MycroftSkill):
     def __init__(self):
         """ The __init__ method is called when the Skill is first constructed.

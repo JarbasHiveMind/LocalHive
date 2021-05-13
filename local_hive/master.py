@@ -2,13 +2,12 @@ from jarbas_hive_mind.nodes.fakecroft import FakeCroftMind, \
     FakeCroftMindProtocol
 from jarbas_hive_mind.message import HiveMessage, HiveMessageType
 from local_hive.exceptions import NonLocalConnectionError
-from hivemind_bus_client import HiveMessageBusClient
 from ovos_utils.log import LOG
 from ovos_utils.messagebus import FakeBus, Message
 from os.path import join, isdir
 from os import listdir
 
-from local_hive.skill import HiveMindSkillWrapper
+from local_hive.skill import HiveMindLocalSkillWrapper
 
 
 class LocalHiveProtocol(FakeCroftMindProtocol):
@@ -53,7 +52,18 @@ class LocalHive(FakeCroftMind):
                 self.default_permissions + ["test"]
         }
 
-    def handle_skill_emit(self, message):
+    # external skills
+    def handle_incoming_mycroft(self, message, client):
+        """
+        external skill client sent a message
+
+        message (Message): mycroft bus message object
+        """
+        self.handle_skill_message(message)
+
+    # locally managed skills
+    def handle_skill_message(self, message):
+        """ message sent by local/system skill"""
         message = Message.deserialize(message)
         skill_id = message.context.get("skill_id")
         permitted = False
@@ -77,8 +87,8 @@ class LocalHive(FakeCroftMind):
         if skill_directory in self.system_skills:
             LOG.error("Already loaded!")
             return self.system_skills[skill_directory]
-
-        skill = HiveMindSkillWrapper(self, skill_directory)
+        skill = HiveMindLocalSkillWrapper(self, skill_directory)
+        LOG.info(f"Loading skill {skill.skill_id}")
         self.system_skills[skill.skill_id] = skill.load()
         return skill
 
