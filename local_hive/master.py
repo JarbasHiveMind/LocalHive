@@ -5,7 +5,7 @@ from local_hive.exceptions import NonLocalConnectionError
 from mycroft.skills.skill_loader import SKILL_MAIN_MODULE, load_skill_module
 from hivemind_bus_client import HiveMessageBusClient
 from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus
+from ovos_utils.messagebus import FakeBus, Message
 from os.path import join, isdir
 from os import listdir
 import os
@@ -36,6 +36,12 @@ class LocalHiveProtocol(FakeCroftMindProtocol):
 
 class LocalHive(FakeCroftMind):
     protocol = LocalHiveProtocol
+    default_permissions = [
+        "register_vocab",
+        "register_intent",
+        "padatious:register_intent",
+        "speak"
+    ]
 
     def __init__(self, port=6989, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -43,7 +49,9 @@ class LocalHive(FakeCroftMind):
         # these are "system" skills, for the most part skills should be
         # external clients instead connected by hivemind bus
         self.system_skills = {}
-        self.allowed_messages = {"mycroft-hello-world.mycroftai": ["test"]}
+        self.allowed_messages = {
+            "mycroft-hello-world.mycroftai": self.default_permissions + ["test"]
+        }
 
     def load_system_skills_folder(self, folder):
         for f in listdir(folder):
@@ -86,11 +94,12 @@ class LocalHive(FakeCroftMind):
 
         if instance:
             bus = FakeBus()
-            for msg in self.allowed_messages.get(skill_id, []):
-                bus.on(msg, self.handle_skill_emit)
+            bus.on("message", self.handle_skill_emit)
 
             instance.skill_id = skill_id
             instance.bind(bus)
+            bus.bind(skill_id)  # FakeBus method to allow injecting metadata
+                                # (eg skill_id( into message context
             try:
                 instance.load_data_files()
                 # Set up intent handlers
@@ -107,9 +116,28 @@ class LocalHive(FakeCroftMind):
         return instance
 
     def handle_skill_emit(self, message):
-        LOG.debug(f"Mycroft bus message received: {message.msg_type}")
-        LOG.debug(f"data: {message.data}")
-        LOG.debug(f"context: {message.context}")
+        message = Message.deserialize(message)
+        skill_id = message.context.get("skill_id")
+        permitted = False
+        if skill_id:
+            # skill_id permission override
+            if skill_id in self.allowed_messages:
+                if message.msg_type in self.allowed_messages[skill_id]:
+                    permitted = True
+            # no override for skill_id
+            else:
+                permitted = True
+        # default permissions
+        elif message.msg_type in self.default_permissions:
+            permitted = True
+
+        if permitted:
+            LOG.debug(f"Mycroft bus message received: {message.msg_type}")
+        else:
+            LOG.error("forbidden bus message!!!")
+            LOG.debug(f"Mycroft bus message received: {message.msg_type}")
+            LOG.debug(f"data: {message.data}")
+            LOG.debug(f"context: {message.context}")
 
     def load_system_skill(self, skill_directory):
         if skill_directory in self.system_skills:

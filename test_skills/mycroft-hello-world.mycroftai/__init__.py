@@ -34,6 +34,7 @@ class HelloWorldSkill(MycroftSkill):
         settings will be available."""
         my_setting = self.settings.get('my_setting')
         self.bus.emit(Message("test"))
+        self.bus.emit(Message("test2"))
 
     @intent_handler(IntentBuilder('ThankYouIntent').require('ThankYouKeyword'))
     def handle_thank_you_intent(self, message):
