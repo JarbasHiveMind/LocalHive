@@ -12,6 +12,7 @@ from local_hive.skill import HiveMindLocalSkillWrapper
 
 class LocalHiveProtocol(FakeCroftMindProtocol):
     platform = "LocalHiveV0.1"
+    crypto_key = None
 
     def onConnect(self, request):
         LOG.info("Client connecting: {0}".format(request.peer))
@@ -64,7 +65,8 @@ class LocalHive(FakeCroftMind):
     # locally managed skills
     def handle_skill_message(self, message):
         """ message sent by local/system skill"""
-        message = Message.deserialize(message)
+        if isinstance(message, str):
+            message = Message.deserialize(message)
         skill_id = message.context.get("skill_id")
         permitted = False
         if skill_id and skill_id in self.permission_overrides:
@@ -94,6 +96,8 @@ class LocalHive(FakeCroftMind):
 
     def load_system_skills_folder(self, folder):
         for f in listdir(folder):
+            if f.startswith("_"):
+                continue
             path = join(folder, f)
             if isdir(path):
                 self.load_system_skill(path)

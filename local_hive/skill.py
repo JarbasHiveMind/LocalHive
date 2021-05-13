@@ -25,8 +25,7 @@ class HiveMindLocalSkillWrapper:
         main_file_path = os.path.join(skill_directory, SKILL_MAIN_MODULE)
         skill_id = os.path.basename(skill_directory)
         if not os.path.isfile(main_file_path):
-            error_msg = 'Failed to load {} due to a missing file.'
-            LOG.error(error_msg.format(skill_id))
+            LOG.error(f'Failed to load {skill_id} due to a missing file.')
         else:
             try:
                 skill_module = load_skill_module(main_file_path, skill_id)
@@ -85,17 +84,16 @@ class HiveMindExternalSkillWrapper:
         self.instance = None
         self.hivebus = HiveMessageBusClient(self.skill_id, port=port,
                                             host=host, ssl=False)
+        self.hivebus.on("open", self.load)
 
-    def run(self):
-        self.hivebus.run_forever()
-
-    def run_in_thread(self):
+    def connect_to_hive(self):
         self.hivebus.run_in_thread()
 
     def handle_skill_emit(self, message):
-        if isinstance(message, Message):
-            msg = HiveMessage(HiveMessageType.BUS, payload=message)
-            self.hivebus.emit(msg)
+        if isinstance(message, str):
+            message = Message.deserialize(message)
+        msg = HiveMessage(HiveMessageType.BUS, payload=message)
+        self.hivebus.emit(msg)
 
     def load(self):
         skill_module = HiveMindLocalSkillWrapper.load_skill_source(self.path)
