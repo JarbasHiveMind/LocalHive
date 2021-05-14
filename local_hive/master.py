@@ -76,7 +76,8 @@ class LocalHive(FakeCroftMind):
         "speak",
         "mycroft.skill.handler.start",
         "mycroft.skill.handler.complete",
-        "skill.converse.request"
+        "skill.converse.request",
+        "skill.converse.response"
     ]
 
     def __init__(self, port=6989, *args, **kwargs):
@@ -131,7 +132,7 @@ class LocalHive(FakeCroftMind):
             if skill_id in self.system_skills:
                 self.system_skills[skill_id].bus.emit(message)
             else:
-                #LOG.debug(f"Triggering intent: {skill_peer}")
+                # LOG.debug(f"Triggering intent: {skill_peer}")
                 self.send2peer(message, skill_peer)
 
         # converse method handling
@@ -142,15 +143,28 @@ class LocalHive(FakeCroftMind):
             LOG.info(f"Converse: {message.msg_type} "
                      f"Skill: {skill_id} "
                      f"Peer: {skill_peer}")
-            message.context['destination'] = "IntentService"
+            message.context['source'] = "IntentService"
+            message.context['destination'] = peers
             if skill_id in self.system_skills:
                 self.system_skills[skill_id].bus.emit(message)
             else:
                 self.send2peer(message, skill_peer)
+        elif message.msg_type in ["skill.converse.response"]:
+            # just logging that it was received, converse method should have
+            # been handled
+            skill_id = message.data.get("skill_id")
+            response = message.data.get("result")
+            message.context["skill_id"] = skill_id
+            skill_peer = self.skill2peer(skill_id)
+            LOG.info(f"Converse Response: {response} "
+                     f"Skill: {skill_id} "
+                     f"Peer: {skill_peer}")
+            message.context['source'] = skill_id
+            message.context['destination'] = peers
 
     def send2peer(self, message, peer):
         if peer in self.clients:
-            #LOG.debug(f"sending to: {peer}")
+            LOG.debug(f"sending to: {peer}")
             client = self.clients[peer].get("instance")
             msg = HiveMessage(HiveMessageType.BUS,
                               source_peer=self.peer,
@@ -174,11 +188,11 @@ class LocalHive(FakeCroftMind):
             message.context["source"] = client.peer
             self.intent_service.handle_utterance(message)
 
-    # locally managed skills
     def handle_skill_message(self, message):
         """ message sent by local/system skill"""
         if isinstance(message, str):
             message = Message.deserialize(message)
+
         skill_id = message.context.get("skill_id")
         intent_skill = self.intent2skill.get(message.msg_type)
         permitted = False
@@ -190,24 +204,25 @@ class LocalHive(FakeCroftMind):
         # default permissions
         elif message.msg_type in self.default_permissions:
             permitted = True
-
         # skill intents
-        elif intent_skill:
+        if intent_skill:
             permitted = True
 
         if permitted:
-            # check if this message should be forwarded to intent service
-            if message.msg_type in self.intent_messages:
-                self.intent_service.bus.emit(message)
-
-            # check if it should be forwarded to some peer (skill/terminal)
             peers = message.context.get('destination') or []
             if isinstance(peers, str):
                 peers = [peers]
+
+            # check if this message should be forwarded to intent service
+            if message.msg_type in self.intent_messages or \
+                    "IntentService" in peers:
+                self.intent_service.bus.emit(message)
+
+            # check if it should be forwarded to some peer (skill/terminal)
             for peer in peers:
                 if peer in self.clients:
                     LOG.debug(f"destination: {message.context['destination']} "
-                              f"skill:{ skill_id} "
+                              f"skill:{skill_id} "
                               f"type:{message.msg_type}")
                     self.send2peer(message, peer)
         else:
@@ -216,6 +231,7 @@ class LocalHive(FakeCroftMind):
     def handle_ignored_message(self, message):
         pass
 
+    # locally managed skills
     def load_system_skill(self, skill_directory):
         if skill_directory in self.system_skills:
             LOG.error("Already loaded!")

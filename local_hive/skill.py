@@ -5,6 +5,7 @@ from ovos_utils.messagebus import FakeBus, Message
 from jarbas_hive_mind.message import HiveMessage, HiveMessageType
 import os
 import json
+from inspect import signature
 
 
 class HiveMindLocalSkillWrapper:
@@ -28,7 +29,11 @@ class HiveMindLocalSkillWrapper:
         return self
 
     def handle_skill_emit(self, message):
+        if isinstance(message, str):
+            message = Message.deserialize(message)
         self.hive.handle_skill_message(message)
+        if message.msg_type == "skill.converse.request":
+            self.handle_converse_request(message)
 
     @staticmethod
     def load_skill_source(skill_directory):
@@ -82,6 +87,38 @@ class HiveMindLocalSkillWrapper:
                 LOG.exception(log_msg.format(repr(e)))
         return instance
 
+    def handle_converse_request(self, message):
+        """Check if the targeted skill id can handle conversation
+
+        If supported, the conversation is invoked.
+        """
+        skill_id = message.data['skill_id']
+        if skill_id != self.skill_id:
+            return
+        try:
+            # check the signature of a converse method
+            # to either pass a message or not
+            if len(signature(self.instance.converse).parameters) == 1:
+                result = self.instance.converse(message=message)
+            else:
+                utterances = message.data['utterances']
+                lang = message.data['lang']
+                result = self.instance.converse(utterances=utterances,
+                                                lang=lang)
+            self.instance.bus.emit(message.reply('skill.converse.response',
+                                                 data={
+                                                     "skill_id": self.skill_id,
+                                                     "result": result}
+                                                 ))
+        except Exception as e:
+            LOG.exception(e)
+            self.instance.bus.emit(message.reply(
+                'skill.converse.response',
+                data={"skill_id": self.skill_id,
+                      "exception": str(e),
+                      "error": 'exception in converse method'}
+            ))
+
 
 class HiveMindExternalSkillWrapper(HiveMindLocalSkillWrapper):
     def __init__(self, skill_directory, port=6989, host="0.0.0.0", *args,
@@ -113,14 +150,17 @@ class HiveMindExternalSkillWrapper(HiveMindLocalSkillWrapper):
         if not message.context.get("source"):
             message.context["source"] = self.skill_id
         msg = HiveMessage(HiveMessageType.BUS, payload=message)
-        #LOG.debug(f"SkillMessage: {msg}")
+        LOG.debug(f"<<: {message.msg_type}")
         self.hive.emit(msg)
+        if message.msg_type == "skill.converse.request":
+            self.handle_converse_request(message)
 
     def handle_hive_message(self, message):
-        #LOG.debug(f"HiveMessage: {message}")
+
         if isinstance(message, str):
             message = json.loads(message)
         if isinstance(message, dict):
             message = HiveMessage(**message)
         if message.msg_type == HiveMessageType.BUS:
+            LOG.debug(f">>: {message.payload.msg_type}")
             self.bus.emit(message.payload)
