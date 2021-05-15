@@ -1,8 +1,4 @@
-from local_hive import LocalHiveListener
-
-
-def get_listener(port=6989):
-    return LocalHiveListener(port=port)
+from local_hive import get_listener
 
 
 if __name__ == "__main__":

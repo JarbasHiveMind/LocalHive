@@ -1,7 +1,8 @@
 from mycroft.skills.skill_loader import SKILL_MAIN_MODULE, load_skill_module
 from hivemind_bus_client import HiveMessageBusClient
 from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus, Message
+from mycroft_bus_client import Message
+from local_hive.fakebus import FakeBus
 from jarbas_hive_mind.message import HiveMessage, HiveMessageType
 import os
 import json
@@ -105,23 +106,25 @@ class HiveMindLocalSkillWrapper:
                 lang = message.data['lang']
                 result = self.instance.converse(utterances=utterances,
                                                 lang=lang)
-            self.instance.bus.emit(message.reply('skill.converse.response',
-                                                 data={
-                                                     "skill_id": self.skill_id,
-                                                     "result": result}
-                                                 ))
+            response = message.reply('skill.converse.response',
+                                     data={
+                                         "skill_id": self.skill_id,
+                                         "result": result}
+                                     )
         except Exception as e:
             LOG.exception(e)
-            self.instance.bus.emit(message.reply(
+            response = message.reply(
                 'skill.converse.response',
                 data={"skill_id": self.skill_id,
                       "exception": str(e),
                       "error": 'exception in converse method'}
-            ))
+            )
+
+        self.instance.bus.emit(response)
 
 
 class HiveMindExternalSkillWrapper(HiveMindLocalSkillWrapper):
-    def __init__(self, skill_directory, port=6989, host="0.0.0.0", *args,
+    def __init__(self, skill_directory, port=6989, host="127.0.0.1", *args,
                  **kwargs):
         skill_id = os.path.basename(skill_directory)
         hive = HiveMessageBusClient(skill_id, port=port, host=host, ssl=False)
@@ -152,15 +155,15 @@ class HiveMindExternalSkillWrapper(HiveMindLocalSkillWrapper):
         msg = HiveMessage(HiveMessageType.BUS, payload=message)
         LOG.debug(f"<<: {message.msg_type}")
         self.hive.emit(msg)
-        if message.msg_type == "skill.converse.request":
-            self.handle_converse_request(message)
 
     def handle_hive_message(self, message):
-
         if isinstance(message, str):
             message = json.loads(message)
         if isinstance(message, dict):
             message = HiveMessage(**message)
         if message.msg_type == HiveMessageType.BUS:
             LOG.debug(f">>: {message.payload.msg_type}")
-            self.bus.emit(message.payload)
+            if message.payload.msg_type == "skill.converse.request":
+                self.handle_converse_request(message.payload)
+            else:
+                self.bus.emit(message.payload)

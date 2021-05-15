@@ -19,6 +19,6 @@ class LocalHiveListener(HiveMindListener):
         return super().listen(factory=self.hive, protocol=LocalHiveProtocol)
 
 
-def get_listener(port=6989, max_connections=-1, bus=None):
-    localmind = LocalHiveListener(port, max_connections, bus)
+def get_listener(port=6989):
+    localmind = LocalHiveListener(port)
     return localmind

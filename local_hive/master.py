@@ -1,8 +1,8 @@
 from os.path import join, isdir
 from os import listdir
-
+from pyee import ExecutorEventEmitter
 from ovos_utils.log import LOG
-from ovos_utils.messagebus import FakeBus, Message
+from mycroft_bus_client import Message
 from mycroft.skills.intent_service import IntentService
 
 from jarbas_hive_mind.nodes.fakecroft import FakeCroftMind, \
@@ -10,6 +10,7 @@ from jarbas_hive_mind.nodes.fakecroft import FakeCroftMind, \
 from jarbas_hive_mind.message import HiveMessage, HiveMessageType
 from local_hive.exceptions import NonLocalConnectionError
 from local_hive.skill import HiveMindLocalSkillWrapper
+from local_hive.fakebus import FakeBus
 
 
 class LocalHiveProtocol(FakeCroftMindProtocol):
@@ -94,6 +95,9 @@ class LocalHive(FakeCroftMind):
             "mycroft-hello-world.mycroftai":
                 self.default_permissions + ["test"]
         }
+        self.ee = ExecutorEventEmitter()
+        self.ee.on("localhive.skill", self.handle_skill_message)
+        self.ee.on("localhive.utterance", self.intent_service.handle_utterance)
 
     # intent service is answering a skill / client
     def skill2peer(self, skill_id):
@@ -110,12 +114,33 @@ class LocalHive(FakeCroftMind):
         skill_id = message.context.get("skill_id")
         peers = message.context.get("destination") or []
 
-        # skill registering intent
-        if message.msg_type in ["register_intent",
-                                "padatious:register_intent"]:
-            LOG.info(f"Register Intent: {message.data['name']} "
-                     f"Skill: {message.context['skill_id']}")
-            self.intent2skill[message.data["name"]] = skill_id
+        # converse method handling
+        if message.msg_type in ["skill.converse.request"]:
+            skill_id = message.data.get("skill_id")
+            message.context["skill_id"] = skill_id
+            skill_peer = self.skill2peer(skill_id)
+            LOG.info(f"Converse: {message.msg_type} "
+                     f"Skill: {skill_id} "
+                     f"Peer: {skill_peer}")
+            message.context['source'] = "IntentService"
+            message.context['destination'] = peers
+            if skill_id in self.system_skills:
+                self.system_skills[skill_id].bus.emit(message)
+            else:
+                self.send2peer(message, skill_peer)
+        elif message.msg_type in ["skill.converse.response"]:
+            # just logging that it was received, converse method handled by
+            # skill
+            skill_id = message.data.get("skill_id")
+            response = message.data.get("result")
+            message.context["skill_id"] = skill_id
+            skill_peer = self.skill2peer(skill_id)
+            LOG.info(f"Converse Response: {response} "
+                     f"Skill: {skill_id} "
+                     f"Peer: {skill_peer}")
+            message.context['source'] = skill_id
+            message.context['destination'] = peers
+
         # intent found
         elif message.msg_type in self.intent2skill:
             skill_id = self.intent2skill[message.msg_type]
@@ -135,32 +160,12 @@ class LocalHive(FakeCroftMind):
                 # LOG.debug(f"Triggering intent: {skill_peer}")
                 self.send2peer(message, skill_peer)
 
-        # converse method handling
-        elif message.msg_type in ["skill.converse.request"]:
-            skill_id = message.data.get("skill_id")
-            message.context["skill_id"] = skill_id
-            skill_peer = self.skill2peer(skill_id)
-            LOG.info(f"Converse: {message.msg_type} "
-                     f"Skill: {skill_id} "
-                     f"Peer: {skill_peer}")
-            message.context['source'] = "IntentService"
-            message.context['destination'] = peers
-            if skill_id in self.system_skills:
-                self.system_skills[skill_id].bus.emit(message)
-            else:
-                self.send2peer(message, skill_peer)
-        elif message.msg_type in ["skill.converse.response"]:
-            # just logging that it was received, converse method should have
-            # been handled
-            skill_id = message.data.get("skill_id")
-            response = message.data.get("result")
-            message.context["skill_id"] = skill_id
-            skill_peer = self.skill2peer(skill_id)
-            LOG.info(f"Converse Response: {response} "
-                     f"Skill: {skill_id} "
-                     f"Peer: {skill_peer}")
-            message.context['source'] = skill_id
-            message.context['destination'] = peers
+        # skill registering intent
+        elif message.msg_type in ["register_intent",
+                                "padatious:register_intent"]:
+            LOG.info(f"Register Intent: {message.data['name']} "
+                     f"Skill: {message.context['skill_id']}")
+            self.intent2skill[message.data["name"]] = skill_id
 
     def send2peer(self, message, peer):
         if peer in self.clients:
@@ -180,13 +185,13 @@ class LocalHive(FakeCroftMind):
         """
         # message from a skill
         if message.context.get("skill_id"):
-            self.handle_skill_message(message)
+            self.ee.emit("localhive.skill", message)
         # message from a terminal
         if message.msg_type == "recognizer_loop:utterance":
             LOG.info(f"Utterance: {message.data['utterances']} "
                      f"Peer: {client.peer}")
             message.context["source"] = client.peer
-            self.intent_service.handle_utterance(message)
+            self.ee.emit("localhive.utterance", message)
 
     def handle_skill_message(self, message):
         """ message sent by local/system skill"""
