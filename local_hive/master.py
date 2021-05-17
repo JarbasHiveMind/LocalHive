@@ -140,7 +140,6 @@ class LocalHive(FakeCroftMind):
                      f"Peer: {skill_peer}")
             message.context['source'] = skill_id
             message.context['destination'] = peers
-
         # intent found
         elif message.msg_type in self.intent2skill:
             skill_id = self.intent2skill[message.msg_type]
@@ -162,7 +161,7 @@ class LocalHive(FakeCroftMind):
 
         # skill registering intent
         elif message.msg_type in ["register_intent",
-                                "padatious:register_intent"]:
+                                  "padatious:register_intent"]:
             LOG.info(f"Register Intent: {message.data['name']} "
                      f"Skill: {message.context['skill_id']}")
             self.intent2skill[message.data["name"]] = skill_id
@@ -202,26 +201,21 @@ class LocalHive(FakeCroftMind):
         intent_skill = self.intent2skill.get(message.msg_type)
         permitted = False
 
+        # skill intents
+        if intent_skill:
+            permitted = True
         # skill_id permission override
-        if skill_id and skill_id in self.permission_overrides:
+        elif skill_id and skill_id in self.permission_overrides:
             if message.msg_type in self.permission_overrides[skill_id]:
                 permitted = True
         # default permissions
         elif message.msg_type in self.default_permissions:
-            permitted = True
-        # skill intents
-        if intent_skill:
             permitted = True
 
         if permitted:
             peers = message.context.get('destination') or []
             if isinstance(peers, str):
                 peers = [peers]
-
-            # check if this message should be forwarded to intent service
-            if message.msg_type in self.intent_messages or \
-                    "IntentService" in peers:
-                self.intent_service.bus.emit(message)
 
             # check if it should be forwarded to some peer (skill/terminal)
             for peer in peers:
@@ -230,6 +224,12 @@ class LocalHive(FakeCroftMind):
                               f"skill:{skill_id} "
                               f"type:{message.msg_type}")
                     self.send2peer(message, peer)
+
+            # check if this message should be forwarded to intent service
+            if message.msg_type in self.intent_messages or \
+                    "IntentService" in peers:
+                self.intent_service.bus.emit(message)
+
         else:
             self.handle_ignored_message(message)
 

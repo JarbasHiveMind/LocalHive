@@ -86,6 +86,8 @@ class HiveMindLocalSkillWrapper:
                 instance = None
                 log_msg = 'Skill initialization failed with {}'
                 LOG.exception(log_msg.format(repr(e)))
+
+            self.bus.emit(Message(self.skill_id + ".loaded"))
         return instance
 
     def handle_converse_request(self, message):
