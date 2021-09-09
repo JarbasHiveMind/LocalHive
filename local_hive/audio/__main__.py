@@ -2,17 +2,18 @@ from threading import Lock
 
 from hivemind_bus_client import HiveMessageBusClient
 from hivemind_bus_client.decorators import on_mycroft_message
+from local_hive.audio import SpeechLoop
 from mycroft import dialog
 from mycroft.audio.audioservice import AudioService
-from mycroft.client.speech.listener import RecognizerLoop
 from mycroft.configuration import setup_locale
 from mycroft.messagebus.message import Message
-from mycroft.tts import TTSFactory
 from mycroft.util import (
     create_daemon,
     wait_for_exit_signal
 )
 from mycroft.util.log import LOG
+from ovos_plugin_manager.stt import OVOSSTTFactory
+from ovos_plugin_manager.tts import OVOSTTSFactory
 
 lock = Lock()
 loop = None
@@ -23,65 +24,6 @@ config = {}
 client_id = "HiveMindAudio"
 bus = HiveMessageBusClient(client_id, port=6989, ssl=False)
 bus.run_in_thread()
-
-
-def handle_record_begin():
-    """Forward internal bus message to external bus."""
-    LOG.info("Begin Recording...")
-    context = {'client_name': client_id,
-               'source': client_id,
-               'destination': ["JarbasHiveMind"]}
-    bus.emit_mycroft(Message('recognizer_loop:record_begin', context=context))
-
-
-def handle_record_end():
-    """Forward internal bus message to external bus."""
-    LOG.info("End Recording...")
-    context = {'client_name': client_id,
-               'source': client_id,
-               'destination': ["JarbasHiveMind"]}
-    bus.emit_mycroft(Message('recognizer_loop:record_end', context=context))
-
-
-def handle_no_internet():
-    LOG.debug("Notifying enclosure of no internet connection")
-    context = {'client_name': client_id,
-               'source': client_id,
-               'destination': ["JarbasHiveMind"]}
-    bus.emit_mycroft(Message('enclosure.notify.no_internet', context=context))
-
-
-def handle_awoken():
-    """Forward mycroft.awoken to the messagebus."""
-    LOG.info("Listener is now Awake: ")
-    context = {'client_name': client_id,
-               'source': client_id,
-               'destination': ["JarbasHiveMind"]}
-    bus.emit_mycroft(Message('mycroft.awoken', context=context))
-
-
-def handle_wakeword(event):
-    LOG.info("Wakeword Detected: " + event['utterance'])
-    bus.emit_mycroft(Message('recognizer_loop:wakeword', event))
-
-
-def handle_utterance(event):
-    LOG.info("Utterance: " + str(event['utterances']))
-    context = {'client_name': client_id,
-               'source': client_id,
-               'destination': ["JarbasHiveMind"]}
-    if 'ident' in event:
-        ident = event.pop('ident')
-        context['ident'] = ident
-    bus.emit_mycroft(Message('recognizer_loop:utterance', event, context))
-
-
-def handle_unknown():
-    context = {'client_name': client_id,
-               'source': client_id,
-               'destination': ["JarbasHiveMind"]}
-    bus.emit_mycroft(
-        Message('mycroft.speech.recognition.unknown', context=context))
 
 
 @on_mycroft_message("speak", bus=bus)
@@ -174,47 +116,31 @@ def handle_stop(event):
     bus.emit_mycroft(Message("mycroft.stop.handled", {"by": "LocalAudio"}))
 
 
-def connect_loop_events():
-    loop.on('recognizer_loop:utterance', handle_utterance)
-    loop.on('recognizer_loop:speech.recognition.unknown', handle_unknown)
-    loop.on('recognizer_loop:record_begin', handle_record_begin)
-    loop.on('recognizer_loop:awoken', handle_awoken)
-    loop.on('recognizer_loop:wakeword', handle_wakeword)
-    loop.on('recognizer_loop:record_end', handle_record_end)
-    loop.on('recognizer_loop:no_internet', handle_no_internet)
-
-
-def connect_hivebus_events():
-    # Register handlers for events on HiveMind bus
-    # bus.on('open', handle_open)
-    # bus.on_close = handle_shutdown
-    # bus.on("message", handle_hive_message)
-    pass
-
 
 def main(port=6989, host="127.0.0.1"):
     global bus
     global loop
-    global config
     global audio
     global tts
 
     setup_locale()
-    connect_hivebus_events()
 
     # connect audio service
     audio = AudioService(bus)
 
-    # Register handlers on internal RecognizerLoop bus
-    loop = RecognizerLoop()
-    connect_loop_events()
+    # Register STT on SpeechLoop event emitter
+    stt = OVOSSTTFactory.create({"stt": {"module": "google"}})
+    loop = SpeechLoop(stt=stt, bus=bus)
     create_daemon(loop.run)
 
     # connect TTS
-    tts = TTSFactory.create()
+    tts = OVOSTTSFactory.create({"tts": {"module": "google"}})
     tts.init(bus)
 
     wait_for_exit_signal()
+
+    if loop:
+        loop.stop()
 
     if tts:
         tts.playback.stop()

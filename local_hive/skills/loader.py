@@ -7,6 +7,7 @@ from jarbas_hive_mind.message import HiveMessage, HiveMessageType
 import os
 import json
 from inspect import signature
+from mycroft.skills.msm_wrapper import get_skills_directory
 
 
 class HiveMindLocalSkillWrapper:
@@ -169,3 +170,12 @@ class HiveMindExternalSkillWrapper(HiveMindLocalSkillWrapper):
                 self.handle_converse_request(message.payload)
             else:
                 self.bus.emit(message.payload)
+
+
+def load_skills_folder(folder=get_skills_directory()):
+    for f in os.listdir(folder):
+        if f.startswith("_") or f.startswith("."):
+            continue
+        path = os.path.join(folder, f)
+        if os.path.isdir(path):
+            yield HiveMindExternalSkillWrapper(os.path.join(folder, f))

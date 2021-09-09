@@ -12,7 +12,7 @@ from mycroft.skills.intent_service import IntentService
 from mycroft_bus_client import Message
 from ovos_utils.log import LOG
 from pyee import ExecutorEventEmitter
-
+from mycroft.skills.msm_wrapper import get_skills_directory
 
 class LocalHiveProtocol(FakeCroftMindProtocol):
     platform = "LocalHiveV0.1"
@@ -238,7 +238,7 @@ class LocalHive(FakeCroftMind):
         pass
 
     # locally managed skills
-    def load_system_skill(self, skill_directory):
+    def load_skill(self, skill_directory):
         if skill_directory in self.system_skills:
             LOG.error("Already loaded!")
             return self.system_skills[skill_directory]
@@ -247,13 +247,13 @@ class LocalHive(FakeCroftMind):
         self.system_skills[skill.skill_id] = skill.load()
         return skill
 
-    def load_system_skills_folder(self, folder):
+    def load_skills_folder(self, folder=get_skills_directory()):
         for f in listdir(folder):
             if f.startswith("_"):
                 continue
             path = join(folder, f)
             if isdir(path):
-                self.load_system_skill(path)
+                self.load_skill(path)
         return self.system_skills
 
 

@@ -2,7 +2,9 @@ from local_hive.skills import load_skills_folder
 from ovos_utils import wait_for_exit_signal
 from os.path import join, dirname
 
-for skill in load_skills_folder():
+path = join(dirname(__file__), "test_skills")
+
+for skill in load_skills_folder(path):
     skill.connect_to_hive()  # connect to hive
 
 wait_for_exit_signal()

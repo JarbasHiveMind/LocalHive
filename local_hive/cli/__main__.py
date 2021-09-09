@@ -3,7 +3,8 @@ from hivemind_bus_client.decorators import on_hive_message
 from mycroft_bus_client import Message
 from mycroft.util.log import LOG
 from time import sleep
-bus = HiveMessageBusClient("CliTerminal", port=6989, ssl=False)
+
+bus = HiveMessageBusClient("HiveMindCli", port=6989, ssl=False)
 bus.run_in_thread()
 
 

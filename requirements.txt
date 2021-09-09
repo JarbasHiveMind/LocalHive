@@ -1,3 +1,4 @@
-HolmesV[skills_minimal]>=2021.9.9
+HolmesV[skills_minimal]>=2021.9.10
 hivemind_bus_client>=0.0.2
 jarbas_hive_mind>=0.10.3
+ovos-plugin-manager>=0.0.1
