@@ -1,4 +1,4 @@
-from local_hive.skills import LocalHiveListener
+from local_hive.protocol import LocalHiveListener
 
 
 def get_listener(port=6989):

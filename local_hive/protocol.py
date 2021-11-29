@@ -1,5 +1,7 @@
-from os import listdir
-from os.path import join, isdir
+from mycroft.skills.intent_service import IntentService
+from mycroft_bus_client import Message
+from ovos_utils.log import LOG
+from pyee import ExecutorEventEmitter
 
 from jarbas_hive_mind import HiveMindListener
 from jarbas_hive_mind.message import HiveMessage, HiveMessageType
@@ -7,12 +9,7 @@ from jarbas_hive_mind.nodes.fakecroft import FakeCroftMind, \
     FakeCroftMindProtocol
 from local_hive.exceptions import NonLocalConnectionError
 from local_hive.fakebus import FakeBus
-from local_hive.skills.loader import HiveMindLocalSkillWrapper
-from mycroft.skills.intent_service import IntentService
-from mycroft_bus_client import Message
-from ovos_utils.log import LOG
-from pyee import ExecutorEventEmitter
-from mycroft.skills.msm_wrapper import get_skills_directory
+
 
 class LocalHiveProtocol(FakeCroftMindProtocol):
     platform = "LocalHiveV0.1"
@@ -89,13 +86,8 @@ class LocalHive(FakeCroftMind):
         intentbus.on("message", self.handle_intent_service_message)
         self.intent_service = IntentService(intentbus)
         self.intent2skill = {}
-        # these are "system" skills, for the most part skills should be
-        # external clients instead connected by hivemind bus
-        self.system_skills = {}
-        self.permission_overrides = {
-            "mycroft-hello-world.mycroftai":
-                self.default_permissions + ["test"]
-        }
+
+        self.permission_overrides = {}
         self.ee = ExecutorEventEmitter()
         self.ee.on("localhive.skill", self.handle_skill_message)
         self.ee.on("localhive.utterance", self.intent_service.handle_utterance)
@@ -125,10 +117,7 @@ class LocalHive(FakeCroftMind):
                      f"Peer: {skill_peer}")
             message.context['source'] = "IntentService"
             message.context['destination'] = peers
-            if skill_id in self.system_skills:
-                self.system_skills[skill_id].bus.emit(message)
-            else:
-                self.send2peer(message, skill_peer)
+            self.send2peer(message, skill_peer)
         elif message.msg_type in ["skill.converse.response"]:
             # just logging that it was received, converse method handled by
             # skill
@@ -154,11 +143,8 @@ class LocalHive(FakeCroftMind):
 
             # trigger the skill
             message.context['source'] = "IntentService"
-            if skill_id in self.system_skills:
-                self.system_skills[skill_id].bus.emit(message)
-            else:
-                # LOG.debug(f"Triggering intent: {skill_peer}")
-                self.send2peer(message, skill_peer)
+            LOG.debug(f"Triggering intent: {skill_peer}")
+            self.send2peer(message, skill_peer)
 
         # skill registering intent
         elif message.msg_type in ["register_intent",
@@ -230,31 +216,11 @@ class LocalHive(FakeCroftMind):
             if message.msg_type in self.intent_messages or \
                     "IntentService" in peers:
                 self.intent_service.bus.emit(message)
-
         else:
             self.handle_ignored_message(message)
 
     def handle_ignored_message(self, message):
         pass
-
-    # locally managed skills
-    def load_skill(self, skill_directory):
-        if skill_directory in self.system_skills:
-            LOG.error("Already loaded!")
-            return self.system_skills[skill_directory]
-        skill = HiveMindLocalSkillWrapper(self, skill_directory)
-        LOG.info(f"Loading skill {skill.skill_id}")
-        self.system_skills[skill.skill_id] = skill.load()
-        return skill
-
-    def load_skills_folder(self, folder=get_skills_directory()):
-        for f in listdir(folder):
-            if f.startswith("_"):
-                continue
-            path = join(folder, f)
-            if isdir(path):
-                self.load_skill(path)
-        return self.system_skills
 
 
 class LocalHiveListener(HiveMindListener):
