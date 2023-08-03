@@ -1,5 +1,8 @@
-from local_hive import get_listener
+from local_hive.service import LocalHiveService
+from ovos_utils import wait_for_exit_signal
 
 if __name__ == "__main__":
-    localmind = get_listener()
-    localmind.listen()
+    localmind = LocalHiveService()
+    localmind.start()
+    wait_for_exit_signal()
+

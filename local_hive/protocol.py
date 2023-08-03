@@ -1,51 +1,99 @@
-from ovos_core.intent_services import IntentService
+from hivemind_bus_client.message import HiveMessage, HiveMessageType
+from hivemind_core.protocol import HiveMindListenerProtocol, HiveMindClientConnection, \
+    HiveMindListenerInternalProtocol
 from ovos_bus_client import Message
+from ovos_core.intent_services import IntentService
 from ovos_utils.log import LOG
-from pyee import ExecutorEventEmitter
 
-from jarbas_hive_mind import HiveMindListener
-from jarbas_hive_mind.message import HiveMessage, HiveMessageType
-from jarbas_hive_mind.nodes.fakecroft import FakeCroftMind, \
-    FakeCroftMindProtocol
-from local_hive.exceptions import NonLocalConnectionError
 from local_hive.fakebus import FakeBus
 
 
-class LocalHiveProtocol(FakeCroftMindProtocol):
-    platform = "LocalHiveV0.1"
-    crypto_key = None
+class LocalHiveInternalProtocol(HiveMindListenerInternalProtocol):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.intent_service = None
+        self.intent2skill = {}
+        self.permission_overrides = {}
 
-    def onConnect(self, request):
-        LOG.info("Client connecting: {0}".format(request.peer))
-        ip = request.peer.split(":")[1]
+    def register_bus_handlers(self):
+        LOG.info("registering intent service bus handlers")
+        self.intent_service = IntentService(self.bus)
+        self.bus.on("message", self.handle_internal_mycroft)  # catch all
 
-        self.platform = request.headers.get("platform", "unknown")
+    def skill2peer(self, skill_id):
+        for peer, client in self.clients.items():
+            if client.key == skill_id:
+                return peer
+        return None
 
-        if ip not in ["0.0.0.0", "127.0.0.1"]:
-            raise NonLocalConnectionError
+    # mycroft handlers  - from LocalHive -> skill
+    def handle_internal_mycroft(self, message: str):
+        """ forward internal messages to clients if they are the target
+        here is where the client isolation happens,
+        clients only get responses to their own messages"""
 
-        # the key is the skill_id and used as an auxiliary data point to
-        # target messages, this changes the paradigm of the regular
-        # hivemind, but its perfectly valid and convenient way to pass this
-        # info around
-        name, key = self.decode_auth(request)
-        # repo.author, unimportant if it catches false positives
-        LOG.info(f"HiveSkill connected {key}")
-        context = {"source": self.peer, "skill_id": key}
-        self.skill_id = key
+        # "message" event is a special case in ovos-bus-client that is not deserialized
+        message = Message.deserialize(message)
 
-        # send message to internal mycroft bus
-        data = {"ip": ip, "headers": request.headers}
-        self.factory.mycroft_send("hive.client.connect", data, context)
-        # return a pair with WS protocol spoken (or None for any) and
-        # custom headers to send in initial WS opening handshake HTTP response
-        headers = {"server": self.platform}
+        skill_id = message.context.get("skill_id")
+        peers = message.context.get("destination") or []
 
-        return (None, headers)
+        # converse method handling
+        if message.msg_type in ["skill.converse.request"]:
+            skill_id = message.data.get("skill_id")
+            message.context["skill_id"] = skill_id
+            skill_peer = self.skill2peer(skill_id)
+            LOG.info(f"Converse: {message.msg_type} "
+                     f"Skill: {skill_id} "
+                     f"Peer: {skill_peer}")
+            message.context['source'] = "IntentService"
+            message.context['destination'] = peers
+            client = self.clients[skill_peer]
+            client.send(
+                HiveMessage(HiveMessageType.BUS, message)
+            )
+
+        elif message.msg_type in ["skill.converse.response"]:
+            # just logging that it was received, converse method handled by
+            # skill
+            skill_id = message.data.get("skill_id")
+            response = message.data.get("result")
+            message.context["skill_id"] = skill_id
+            skill_peer = self.skill2peer(skill_id)
+            LOG.info(f"Converse Response: {response} "
+                     f"Skill: {skill_id} "
+                     f"Peer: {skill_peer}")
+            message.context['source'] = skill_id
+            message.context['destination'] = peers
+
+        # intent found
+        elif message.msg_type in self.intent2skill:
+            skill_id = self.intent2skill[message.msg_type]
+            skill_peer = self.skill2peer(skill_id)
+            message.context["skill_id"] = skill_id
+
+            LOG.info(f"Intent: {message.msg_type} "
+                     f"Skill: {skill_id} "
+                     f"Source: {peers} "
+                     f"Target: {skill_peer}")
+
+            # trigger the skill
+            message.context['source'] = "IntentService"
+            LOG.debug(f"Triggering intent: {skill_peer}")
+            client = self.clients[skill_peer]
+            client.send(
+                HiveMessage(HiveMessageType.BUS, message)
+            )
+
+        # skill registering intent - keep track internally
+        elif message.msg_type in ["register_intent",
+                                  "padatious:register_intent"]:
+            LOG.info(f"Register Intent: {message.data['name']} "
+                     f"Skill: {message.context['skill_id']}")
+            self.intent2skill[message.data["name"]] = skill_id
 
 
-class LocalHive(FakeCroftMind):
-    protocol = LocalHiveProtocol
+class LocalHiveProtocol(HiveMindListenerProtocol):
     intent_messages = [
         "recognizer_loop:utterance",
         "intent.service.intent.get",
@@ -79,108 +127,77 @@ class LocalHive(FakeCroftMind):
         "skill.converse.response"
     ]
 
-    def __init__(self, port=6989, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.bus_port = port
-        intentbus = FakeBus()
-        intentbus.on("message", self.handle_intent_service_message)
-        self.intent_service = IntentService(intentbus)
+        self.bus = None
         self.intent2skill = {}
-
         self.permission_overrides = {}
-        self.ee = ExecutorEventEmitter()
-        self.ee.on("localhive.skill", self.handle_skill_message)
-        self.ee.on("localhive.utterance", self.intent_service.handle_utterance)
 
-    # intent service is answering a skill / client
-    def skill2peer(self, skill_id):
-        for peer, client in self.clients.items():
-            if not client.get("instance"):
-                continue
-            if client["instance"].skill_id == skill_id:
-                return peer
-        return None
+    def handle_new_client(self, client: HiveMindClientConnection):
+        LOG.info(f"new client: {client.peer}")
+        self.clients[client.peer] = client
+        message = Message("hive.client.connect",
+                          {"ip": client.ip, "session_id": client.sess.session_id},
+                          {"source": client.peer})
+        self.internal_protocol.bus.emit(message)
 
-    def handle_intent_service_message(self, message):
-        if isinstance(message, str):
-            message = Message.deserialize(message)
-        skill_id = message.context.get("skill_id")
-        peers = message.context.get("destination") or []
+        msg = HiveMessage(HiveMessageType.HELLO,
+                          payload={"handshake": False,
+                                   "crypto": False,
+                                   "peer": client.peer,  # this identifies the connected client in ovos message.context
+                                   "node_id": self.peer})
+        LOG.info(f"saying HELLO to: {client.peer}")
+        client.send(msg)
 
-        # converse method handling
-        if message.msg_type in ["skill.converse.request"]:
-            skill_id = message.data.get("skill_id")
-            message.context["skill_id"] = skill_id
-            skill_peer = self.skill2peer(skill_id)
-            LOG.info(f"Converse: {message.msg_type} "
-                     f"Skill: {skill_id} "
-                     f"Peer: {skill_peer}")
-            message.context['source'] = "IntentService"
-            message.context['destination'] = peers
-            self.send2peer(message, skill_peer)
-        elif message.msg_type in ["skill.converse.response"]:
-            # just logging that it was received, converse method handled by
-            # skill
-            skill_id = message.data.get("skill_id")
-            response = message.data.get("result")
-            message.context["skill_id"] = skill_id
-            skill_peer = self.skill2peer(skill_id)
-            LOG.info(f"Converse Response: {response} "
-                     f"Skill: {skill_id} "
-                     f"Peer: {skill_peer}")
-            message.context['source'] = skill_id
-            message.context['destination'] = peers
-        # intent found
-        elif message.msg_type in self.intent2skill:
-            skill_id = self.intent2skill[message.msg_type]
-            skill_peer = self.skill2peer(skill_id)
-            message.context["skill_id"] = skill_id
+        # request client to start handshake (by sending client pubkey)
+        payload = {
+            "handshake": False,  # tell the client it must do a handshake or connection will be dropped
+            "binarize": False,  # report we support the binarization scheme
+            "preshared_key": False,  # do we have a pre-shared key (V0 proto)
+            "password": False,  # is password available (V1 proto, replaces pre-shared key)
+            "crypto_required": False  # do we allow unencrypted payloads
+        }
+        msg = HiveMessage(HiveMessageType.HANDSHAKE, payload)
+        LOG.info(f"starting {client.peer} HANDSHAKE: {payload}")
+        client.send(msg)
+        # if client is in protocol V1 -> self.handle_handshake_message
+        # clients can rotate their pubkey or session_key by sending a new handshake
 
-            LOG.info(f"Intent: {message.msg_type} "
-                     f"Skill: {skill_id} "
-                     f"Source: {peers} "
-                     f"Target: {skill_peer}")
+    def handle_handshake_message(self, message: HiveMessage,
+                                 client: HiveMindClientConnection):
+        LOG.info("handshake received, ignoring")
 
-            # trigger the skill
-            message.context['source'] = "IntentService"
-            LOG.debug(f"Triggering intent: {skill_peer}")
-            self.send2peer(message, skill_peer)
+    @property
+    def intent_service(self):
+        return self.internal_protocol.intent_service
 
-        # skill registering intent
-        elif message.msg_type in ["register_intent",
-                                  "padatious:register_intent"]:
-            LOG.info(f"Register Intent: {message.data['name']} "
-                     f"Skill: {message.context['skill_id']}")
-            self.intent2skill[message.data["name"]] = skill_id
+    def bind(self, websocket, bus=None):
+        websocket.protocol = self
+        if bus is None:
+            bus = FakeBus()
+        self.bus = bus
+        self.internal_protocol = LocalHiveInternalProtocol(self.bus)
+        self.internal_protocol.register_bus_handlers()
 
-    def send2peer(self, message, peer):
-        if peer in self.clients:
-            LOG.debug(f"sending to: {peer}")
-            client = self.clients[peer].get("instance")
-            msg = HiveMessage(HiveMessageType.BUS,
-                              source_peer=self.peer,
-                              payload=message)
-            self.interface.send(msg, client)
-
-    # external skills / clients
-    def handle_incoming_mycroft(self, message, client):
+    # messages from skill -> LocalHive
+    def handle_inject_mycroft_msg(self, message: Message, client: HiveMindClientConnection):
         """
-        external skill client sent a message
-
         message (Message): mycroft bus message object
         """
-        # message from a skill
-        if message.context.get("skill_id"):
-            self.ee.emit("localhive.skill", message)
         # message from a terminal
         if message.msg_type == "recognizer_loop:utterance":
             LOG.info(f"Utterance: {message.data['utterances']} "
                      f"Peer: {client.peer}")
             message.context["source"] = client.peer
-            self.ee.emit("localhive.utterance", message)
+            self.intent_service.handle_utterance(message)
+
+        # message from a skill
+        elif message.context.get("skill_id"):
+            message.context["source"] = client.peer
+            self.handle_skill_message(message)
 
     def handle_skill_message(self, message):
-        """ message sent by local/system skill"""
+        """ message sent by skill"""
         if isinstance(message, str):
             message = Message.deserialize(message)
 
@@ -206,35 +223,20 @@ class LocalHive(FakeCroftMind):
 
             # check if it should be forwarded to some peer (skill/terminal)
             for peer in peers:
-                if peer in self.clients:
+                client = self.clients.get(peer)
+                if client:
                     LOG.debug(f"destination: {message.context['destination']} "
                               f"skill:{skill_id} "
                               f"type:{message.msg_type}")
-                    self.send2peer(message, peer)
+                    client.send(
+                        HiveMessage(HiveMessageType.BUS, message)
+                    )
 
             # check if this message should be forwarded to intent service
-            if message.msg_type in self.intent_messages or \
-                    "IntentService" in peers:
-                self.intent_service.bus.emit(message)
+            if message.msg_type in self.intent_messages or "IntentService" in peers:
+                self.bus.emit(message)
         else:
             self.handle_ignored_message(message)
 
     def handle_ignored_message(self, message):
         pass
-
-
-class LocalHiveListener(HiveMindListener):
-    def __init__(self, port, *args, **kwargs):
-        super(LocalHiveListener, self).__init__(port=port, *args, **kwargs)
-        self.hive = LocalHive(port=port)
-
-    def secure_listen(self, *args, **kwargs):
-        return super().secure_listen(key=None, cert=None, factory=self.hive,
-                                     protocol=LocalHiveProtocol)
-
-    def unsafe_listen(self, *args, **kwargs):
-        return super().unsafe_listen(factory=self.hive,
-                                     protocol=LocalHiveProtocol)
-
-    def listen(self, *args, **kwargs):
-        return super().listen(factory=self.hive, protocol=LocalHiveProtocol)

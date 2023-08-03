@@ -12,14 +12,9 @@ from local_hive.fakebus import FakeBus
 class HiveMindExternalSkillWrapper:
     def __init__(self, skill_directory, port=6989, host="127.0.0.1"):
         skill_id = os.path.basename(skill_directory)
-        self.hive = HiveMessageBusClient(skill_id, port=port,
-                                         host=host, ssl=False)
-
-        self.hive.on_close = self.handle_shutdown
-        self.hive.on(HiveMessageType.BUS, self.handle_hive_message)
 
         self.path = skill_directory
-        self.skill_id = os.path.basename(skill_directory)
+        self.skill_id = skill_id
 
         # fakebus so we can intercept and modify before sending to hivemind
         # we could technically pass the hivemind connection directly,
@@ -28,6 +23,12 @@ class HiveMindExternalSkillWrapper:
         self.bus = FakeBus()
         self.bus.on("message", self.handle_skill_emit)
         self.bus.bind(self.skill_id)
+
+        self.hive = HiveMessageBusClient(self.skill_id, port=port, host=host)
+        self.hive.connect(self.bus)
+
+        self.hive.on_close = self.handle_shutdown
+        self.hive.on(HiveMessageType.BUS, self.handle_hive_message)
 
         self.skill_loader = SkillLoader(self.bus, self.path)
         self.load()
