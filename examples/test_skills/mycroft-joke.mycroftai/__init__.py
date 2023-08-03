@@ -16,17 +16,16 @@ from os.path import dirname, join
 
 import pyjokes
 
-from adapt.intent import IntentBuilder
-from mycroft.skills.core import MycroftSkill, intent_handler
+from ovos_utils.intents import IntentBuilder
+from ovos_workshop.decorators import intent_handler
+from ovos_workshop.skills.ovos import OVOSSkill
 from random import choice
 
 
 joke_types = ['chuck', 'neutral']
 
 
-class JokingSkill(MycroftSkill):
-    def __init__(self):
-        super(JokingSkill, self).__init__(name="JokingSkill")
+class JokingSkill(OVOSSkill):
 
     def speak_joke(self, lang, category):
         self.speak(pyjokes.get_joke(language=lang, category=category))

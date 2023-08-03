@@ -1,4 +1,4 @@
-from local_hive.skills import load_skills_folder
+from local_hive.loader import load_skills_folder
 from ovos_utils import wait_for_exit_signal
 from os.path import join, dirname
 
