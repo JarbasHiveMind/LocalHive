@@ -1,23 +1,53 @@
+import os
 from setuptools import setup
+
+BASEDIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def get_version():
+    """ Find the version of the package"""
+    version = None
+    version_file = os.path.join(BASEDIR, 'local_hive', 'version.py')
+    major, minor, build, alpha = (None, None, None, None)
+    with open(version_file) as f:
+        for line in f:
+            if 'VERSION_MAJOR' in line:
+                major = line.split('=')[1].strip()
+            elif 'VERSION_MINOR' in line:
+                minor = line.split('=')[1].strip()
+            elif 'VERSION_BUILD' in line:
+                build = line.split('=')[1].strip()
+            elif 'VERSION_ALPHA' in line:
+                alpha = line.split('=')[1].strip()
+
+            if ((major and minor and build and alpha) or
+                    '# END_VERSION_BLOCK' in line):
+                break
+    version = f"{major}.{minor}.{build}"
+    if alpha:
+        version += f"a{alpha}"
+    return version
+
+
+def required(requirements_file):
+    """ Read requirements file and remove comments and empty lines. """
+    with open(os.path.join(BASEDIR, requirements_file), 'r') as f:
+        requirements = f.read().splitlines()
+        if 'MYCROFT_LOOSE_REQUIREMENTS' in os.environ:
+            print('USING LOOSE REQUIREMENTS!')
+            requirements = [r.replace('==', '>=').replace('~=', '>=') for r in requirements]
+        return [pkg for pkg in requirements
+                if pkg.strip() and not pkg.startswith("#")]
 
 setup(
     name='HiveMind-LocalHive',
-    version='0.0.3a1',
+    version=get_version(),
     packages=['local_hive'],
-    install_requires=["hivemind_bus_client>=0.0.3a2",
-                      "ovos-plugin-manager>=0.0.3a3",
-                      "ovos-workshop>=0.0.12a27",
-                      "ovos-core",
-                      "jarbas_hive_mind>=0.10.3"],
+    install_requires=required("requirements.txt"),
     include_package_data=True,
-    url='https://github.com/OpenJarbas/HiveMind-voice-sat',
+    url='https://github.com/JarbasHiveMind/LocalHive',
     license='MIT',
     author='jarbasAI',
     author_email='jarbasai@mailfence.com',
-    description='HiveMind skills runner',
-    entry_points={
-        'console_scripts': [
-            'HiveMind-voice-sat=mycroft_voice_satellite.__main__:main'
-        ]
-    }
+    description='HiveMind skills runner'
 )
