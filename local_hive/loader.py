@@ -1,8 +1,8 @@
 import os
 from time import sleep
 
-from mycroft.skills.skill_loader import SkillLoader
-from mycroft_bus_client import Message
+from ovos_workshop.skill_launcher import SkillLoader
+from ovos_bus_client import Message
 from ovos_utils.log import LOG
 
 from hivemind_bus_client import HiveMessageBusClient, HiveMessage, HiveMessageType
@@ -12,7 +12,8 @@ from local_hive.fakebus import FakeBus
 class HiveMindExternalSkillWrapper:
     def __init__(self, skill_directory, port=6989, host="127.0.0.1"):
         skill_id = os.path.basename(skill_directory)
-        self.hive = HiveMessageBusClient(skill_id, port=port, host=host, ssl=False)
+        self.hive = HiveMessageBusClient(skill_id, port=port,
+                                         host=host, ssl=False)
 
         self.hive.on_close = self.handle_shutdown
         self.hive.on(HiveMessageType.BUS, self.handle_hive_message)

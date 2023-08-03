@@ -14,19 +14,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Mycroft Core.  If not, see <http://www.gnu.org/licenses/>.
-from mycroft.messagebus import Message
-from adapt.intent import IntentBuilder
-from mycroft import MycroftSkill, intent_handler
+from ovos_bus_client import Message
+from ovos_utils.intents import IntentBuilder
+
+from ovos_workshop.decorators import intent_handler
+from ovos_workshop.skills.ovos import OVOSSkill
 
 
-class HelloWorldSkill(MycroftSkill):
-    def __init__(self):
-        """ The __init__ method is called when the Skill is first constructed.
-        It is often used to declare variables or perform setup actions, however
-        it cannot utilise MycroftSkill methods as the class does not yet exist.
-        """
-        super().__init__()
-        self.learning = True
+class HelloWorldSkill(OVOSSkill):
 
     def initialize(self):
         """ Perform any final setup needed for the skill here.

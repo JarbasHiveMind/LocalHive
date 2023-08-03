@@ -1,4 +1,5 @@
-hivemind_bus_client~=0.0.3a2
-ovos-plugin-manager~=0.0.3a3
-ovos-skills~=0.0.2a1
+hivemind_bus_client>=0.0.3a2
+ovos-plugin-manager>=0.0.3a3
+ovos-core>=0.0.8a1
 jarbas_hive_mind>=0.10.3
+ovos-workshop

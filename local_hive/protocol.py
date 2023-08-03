@@ -1,5 +1,5 @@
-from mycroft.skills.intent_service import IntentService
-from mycroft_bus_client import Message
+from ovos_core.intent_services import IntentService
+from ovos_bus_client import Message
 from ovos_utils.log import LOG
 from pyee import ExecutorEventEmitter
 
