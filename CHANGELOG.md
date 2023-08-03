@@ -1,8 +1,8 @@
 # Changelog
 
-## [Unreleased](https://github.com/JarbasHiveMind/LocalHive/tree/HEAD)
+## [V0.0.3a2](https://github.com/JarbasHiveMind/LocalHive/tree/V0.0.3a2) (2023-08-03)
 
-[Full Changelog](https://github.com/JarbasHiveMind/LocalHive/compare/1e8ec907e9521838c1dd639a026bf97c081f1723...HEAD)
+[Full Changelog](https://github.com/JarbasHiveMind/LocalHive/compare/1e8ec907e9521838c1dd639a026bf97c081f1723...V0.0.3a2)
 
 **Implemented enhancements:**
 
