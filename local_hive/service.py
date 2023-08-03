@@ -67,38 +67,6 @@ class LocalHiveBusEventHandler(MessageBusEventHandler):
 
 
 class LocalHiveService(Thread):
-    intent_messages = [
-        "recognizer_loop:utterance",
-        "intent.service.intent.get",
-        "intent.service.skills.get",
-        "intent.service.active_skills.get",
-        "intent.service.adapt.get",
-        "intent.service.padatious.get",
-        "intent.service.adapt.manifest.get",
-        "intent.service.padatious.manifest.get",
-        "intent.service.adapt.vocab.manifest.get",
-        "intent.service.padatious.entities.manifest.get",
-        "register_vocab",
-        "register_intent",
-        "detach_intent",
-        "detach_skill",
-        "add_context",
-        "remove_context",
-        "clear_context",
-        "mycroft.skills.loaded",
-        "active_skill_request",
-        'mycroft.speech.recognition.unknown',
-        'padatious:register_intent',
-        'padatious:register_entity',
-        'mycroft.skills.initialized'
-    ]
-    default_permissions = intent_messages + [
-        "speak",
-        "mycroft.skill.handler.start",
-        "mycroft.skill.handler.complete",
-        "skill.converse.request",
-        "skill.converse.response"
-    ]
 
     def __init__(self,
                  alive_hook: Callable = on_alive,
