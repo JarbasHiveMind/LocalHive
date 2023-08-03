@@ -39,8 +39,9 @@ def required(requirements_file):
         return [pkg for pkg in requirements
                 if pkg.strip() and not pkg.startswith("#")]
 
+
 setup(
-    name='HiveMind-LocalHive',
+    name='hivemind-local',
     version=get_version(),
     packages=['local_hive'],
     install_requires=required("requirements.txt"),
