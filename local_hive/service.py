@@ -12,8 +12,10 @@ from ovos_utils.process_utils import ProcessStatus, StatusCallbackMap
 from tornado import web, ioloop
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
 
-from local_hive.fakebus import FakeBus
+from ovos_utils.messagebus import FakeBus
 from local_hive.protocol import LocalHiveProtocol
+
+LOG.set_level("INFO")
 
 
 def on_ready():
