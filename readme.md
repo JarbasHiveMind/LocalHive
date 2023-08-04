@@ -12,8 +12,10 @@ _"security as a requirement, not a feature"_
 - the LocalHive rejects all connections not coming from 0.0.0.0
 - the LocalHive runs in port 6989
 - skills can not listen to each other's traffic
+- skills can only inject whitelisted messages to LocalHive (by default intents + converse + speak)
 - by default skills only register and trigger intents, nothing else
 - each skill can run in it's own .venv with it's own requirements
+- TODO - skills should be able to request to listen for specific messages, cross skill communication is currently impossible
 
 ## Mycroftium
 
@@ -29,6 +31,18 @@ The default terminals can connect to LocalHive as long as they are running on sa
 - launch skills standalone, see [./examples](./examples) folder
 
 PHAL and GUI are not yet supported under this configuration
+
+### Skill Permissions
+
+default permissions for skills can be found in [permissions.py][./local_hive/permissions.py]
+
+you can allow new messages per skill_id by editing the json file at `~/.config/LocalHive/skill_permissions.json`
+
+```
+{
+    "ovos-stop.openvoiceos": ["mycroft.stop"]
+}
+```
 
 ### Usage Logs
 
