@@ -65,7 +65,7 @@ class LocalHiveBusEventHandler(MessageBusEventHandler):
     def check_origin(self, origin) -> bool:
         # blocks any connection not from localhost
         ip = origin.split("://")[-1].split(":")[0]
-        return ip == "127.0.0.1"
+        return ip == "127.0.0.1" or ip == "0.0.0.0"
 
 
 class LocalHiveService(Thread):

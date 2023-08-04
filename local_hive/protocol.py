@@ -1,10 +1,13 @@
 from hivemind_bus_client.message import HiveMessage, HiveMessageType
 from hivemind_core.protocol import HiveMindListenerProtocol, HiveMindClientConnection, \
     HiveMindListenerInternalProtocol
+from json_database import JsonConfigXDG
 from ovos_bus_client import Message
 from ovos_core.intent_services import IntentService
 from ovos_utils.log import LOG
 from ovos_utils.messagebus import FakeBus
+
+import local_hive.permissions as Permissions
 
 
 class LocalHiveInternalProtocol(HiveMindListenerInternalProtocol):
@@ -12,7 +15,6 @@ class LocalHiveInternalProtocol(HiveMindListenerInternalProtocol):
         super().__init__(*args, **kwargs)
         self.intent_service = None
         self.intent2skill = {}
-        self.permission_overrides = {}
 
     def register_bus_handlers(self):
         self.intent_service = IntentService(self.bus)
@@ -36,17 +38,16 @@ class LocalHiveInternalProtocol(HiveMindListenerInternalProtocol):
         if message.msg_type in ["skill.converse.ping"]:
             LOG.info("Converse ping")
             # TODO - careful to avoid infinite loop
-            #for client in self.clients.values():
+            # for client in self.clients.values():
             #    client.send(
             #        HiveMessage(HiveMessageType.BUS, message)
             #    )
-            #return
+            # return
 
         skill_id = message.context.get("skill_id")
 
         skill_peer = self.skill2peer(skill_id)
         if not skill_peer:
-            print(666, message.msg_type)
             return
 
         client = self.clients[skill_peer]
@@ -58,9 +59,9 @@ class LocalHiveInternalProtocol(HiveMindListenerInternalProtocol):
             LOG.info(f"Converse: {message.msg_type} "
                      f"Skill: {skill_id} "
                      f"Peer: {skill_peer}")
-            #client.send(
+            # client.send(
             #    HiveMessage(HiveMessageType.BUS, message)
-            #)
+            # )
         elif message.msg_type in ["skill.converse.response"]:
             response = message.data.get("result")
             LOG.info(f"Converse Response: {response} "
@@ -92,54 +93,9 @@ class LocalHiveInternalProtocol(HiveMindListenerInternalProtocol):
 
 
 class LocalHiveProtocol(HiveMindListenerProtocol):
-    intent_messages = [
-        "recognizer_loop:utterance",
-        "intent.service.intent.get",
-        "intent.service.skills.get",
-        "intent.service.active_skills.get",
-        "intent.service.adapt.get",
-        "intent.service.padatious.get",
-        "intent.service.adapt.manifest.get",
-        "intent.service.padatious.manifest.get",
-        "intent.service.adapt.vocab.manifest.get",
-        "intent.service.padatious.entities.manifest.get",
-        "register_vocab",
-        "register_intent",
-        "detach_intent",
-        "detach_skill",
-        "add_context",
-        "remove_context",
-        "clear_context",
-        'padatious:register_intent',
-        'padatious:register_entity',
-        "mycroft.skill.set_cross_context",
-        "mycroft.skill.remove_cross_context"
-    ]
-    converse_permissions = [
-       # "skill.converse.request",
-        "skill.converse.response",
-       # "skill.converse.ping",
-        "skill.converse.pong",
-        "active_skill_request",
-        "intent.service.skills.activated",
-        "intent.service.skills.deactivated",
-    ]
-    speak_permissions = ["speak"]
-    stop_permissions = ["mycroft.stop"]
-    default_permissions = intent_messages + \
-                          converse_permissions + \
-                          speak_permissions + \
-                          stop_permissions + \
-                          [
-                              "mycroft.skill.handler.start",
-                              "mycroft.skill.handler.complete",
-                              "mycroft.skills.loaded",
-
-                          ]
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.permission_overrides = {}
+        self.permission_overrides = JsonConfigXDG("skill_permissions", subfolder="LocalHive")
 
     def handle_new_client(self, client: HiveMindClientConnection):
         LOG.info(f"new client: {client.peer}")
@@ -201,12 +157,11 @@ class LocalHiveProtocol(HiveMindListenerProtocol):
         message (Message): mycroft bus message object
         """
         # message from a terminal
-        if message.msg_type == "recognizer_loop:utterance":
+        if message.msg_type in Permissions.UTTERANCES:
             LOG.info(f"Utterance: {message.data['utterances']} "
                      f"Peer: {client.peer}")
             message.context["source"] = client.peer
             self.internal_protocol.bus.emit(message)
-
         # message from a skill
         elif message.context.get("skill_id"):
             message.context["source"] = client.peer
@@ -229,7 +184,7 @@ class LocalHiveProtocol(HiveMindListenerProtocol):
             if message.msg_type in self.permission_overrides[skill_id]:
                 permitted = True
         # default permissions
-        elif message.msg_type in self.default_permissions:
+        elif message.msg_type in Permissions.DEFAULT:
             permitted = True
 
         LOG.debug(f"{message.msg_type} allowed for {skill_id}: {permitted}")
