@@ -34,7 +34,7 @@ PHAL and GUI are not yet supported under this configuration
 
 ### Skill Permissions
 
-default permissions for skills can be found in [permissions.py][./local_hive/permissions.py]
+default permissions for skills can be found in [permissions.py](./local_hive/permissions.py)
 
 you can allow new messages per skill_id by editing the json file at `~/.config/LocalHive/skill_permissions.json`
 
